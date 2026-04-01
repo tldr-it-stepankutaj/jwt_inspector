@@ -15,25 +15,17 @@ jobs:
       matrix:
         include:
           - os: ubuntu-22.04
-            arch: amd64
             target: linux-amd64
-            cmake_flags: ""
           - os: ubuntu-22.04-arm
-            arch: arm64
             target: linux-arm64
-            cmake_flags: ""
-          - os: macos-13
-            arch: amd64
+          - os: macos-15
             target: darwin-amd64
-            cmake_flags: ""
-          - os: macos-14
-            arch: arm64
+            cmake_extra: "-DCMAKE_OSX_ARCHITECTURES=x86_64"
+          - os: macos-15
             target: darwin-arm64
-            cmake_flags: ""
+            cmake_extra: "-DCMAKE_OSX_ARCHITECTURES=arm64"
           - os: windows-latest
-            arch: amd64
             target: windows-amd64
-            cmake_flags: "-DENABLE_OPENCL=OFF"
 
     runs-on: ${{ matrix.os }}
 
@@ -57,11 +49,14 @@ jobs:
           choco install openssl --no-progress -y
 
       - name: Configure
-        run: >
-          cmake -B build
-          -DCMAKE_BUILD_TYPE=Release
-          -DENABLE_OPENCL=${{ runner.os == 'Windows' && 'OFF' || 'ON' }}
-          ${{ matrix.cmake_flags }}
+        shell: bash
+        run: |
+          cmake_args="-B build -DCMAKE_BUILD_TYPE=Release"
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            cmake_args="$cmake_args -DENABLE_OPENCL=OFF"
+          fi
+          cmake_args="$cmake_args ${{ matrix.cmake_extra }}"
+          cmake $cmake_args
 
       - name: Build
         run: cmake --build build --config Release --parallel
