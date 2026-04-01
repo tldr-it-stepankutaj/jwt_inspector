@@ -1,21 +1,35 @@
-#ifndef JWT_BRUTEFORCE_HPP
-#define JWT_BRUTEFORCE_HPP
+#pragma once
 
+#include <cstddef>
 #include <string>
 #include <vector>
 
-class JWTBruteForcer {
-public:
-    void run(const std::string& token, const std::vector<std::string>& wordlist);
+namespace jwt_inspector {
 
-private:
-    std::string headerPayload;
-    std::string tokenSignature;
-
-    std::vector<unsigned char> decodedSignature;
-
-    void parse_token(const std::string& token);
-    static std::string base64url_decode(const std::string& input);
+struct BruteforceResult {
+    bool found = false;
+    std::string secret;
+    size_t attempts = 0;
+    double elapsed_sec = 0.0;
+    double hashes_per_sec = 0.0;
 };
 
-#endif // JWT_BRUTEFORCE_HPP
+/// CPU dictionary bruteforce using wordlist.
+BruteforceResult cpu_bruteforce(const std::string& token,
+                                const std::vector<std::string>& wordlist,
+                                unsigned int num_threads,
+                                bool json_output = false);
+
+/// GPU dictionary bruteforce using OpenCL.
+BruteforceResult gpu_bruteforce(const std::string& token,
+                                const std::vector<std::string>& wordlist,
+                                bool json_output = false);
+
+/// Generative bruteforce: tries all combinations of charset up to max_length.
+BruteforceResult generative_bruteforce(const std::string& token,
+                                       const std::string& charset,
+                                       size_t max_length,
+                                       unsigned int num_threads,
+                                       bool json_output = false);
+
+} // namespace jwt_inspector

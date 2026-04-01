@@ -1,130 +1,112 @@
 # JWT Inspector
 
-A high-performance JWT (JSON Web Token) analysis and brute-force tool leveraging OpenCL for GPU-accelerated secret key discovery.
+A high-performance JWT (JSON Web Token) analysis and brute-force tool with GPU-accelerated secret key discovery via OpenCL.
 
 ![JWT Inspector](https://img.shields.io/badge/JWT-Inspector-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 ## Features
 
-- 🔍 Decode and inspect JWT tokens
-- 🔑 Multi-threaded CPU brute-force for JWT secrets
-- ⚡ GPU-accelerated brute-force using OpenCL
-- 📊 Performance metrics tracking (hashes/sec)
-- 🚀 Optimized for high-performance computing
+- **Decode** — inspect JWT header, payload, and signature
+- **CPU bruteforce** — multi-threaded dictionary attack (HS256/HS384/HS512)
+- **GPU bruteforce** — OpenCL-accelerated dictionary attack (HS256)
+- **Generative bruteforce** — charset + max-length pattern-based key generation
+- **Signature verification** — verify RS256/RS384/RS512/ES256/ES384/ES512 with public key
+- **JSON output** — machine-readable output for all commands
+- **Progress reporting** — real-time speed, ETA, and progress bar
 
-## Requirements
+## Installation
 
-- C++17 compatible compiler
-- OpenSSL 3.x
-- OpenCL compatible GPU (for GPU acceleration)
-- CMake 3.10+
-- nlohmann/json library
+Download a pre-built binary from the [Releases](https://github.com/tldr-it-stepankutaj/jwt_inspector/releases) page, or build from source.
 
 ## Building from Source
 
+### Requirements
+
+- C++17 compiler
+- CMake 3.10+
+- OpenSSL 3.x
+- OpenCL (optional, for GPU acceleration)
+
+nlohmann/json and GoogleTest are fetched automatically by CMake.
+
 ```bash
-# Clone the repository
 git clone https://github.com/tldr-it-stepankutaj/jwt_inspector.git
 cd jwt_inspector
 
-# Create build directory
-mkdir build && cd build
+# Build
+cmake -B build && cmake --build build --parallel
 
-# Configure and build
-cmake ..
-make
+# Build without OpenCL
+cmake -B build -DENABLE_OPENCL=OFF && cmake --build build --parallel
+
+# Build with tests
+cmake -B build -DBUILD_TESTS=ON && cmake --build build --parallel
+cd build && ctest --output-on-failure
 ```
 
 ## Usage
 
-From the provided source code, JWT Inspector appears to run directly using token and wordlist files specified in the code. The application reads the token from `data/sample_token.txt` and the wordlist from `data/wordlist.txt`.
+```
+jwt_inspector <command> [options]
 
+Commands:
+  decode         Decode and inspect a JWT token
+  bruteforce     CPU-based dictionary attack on JWT secret
+  gpu-bruteforce GPU-accelerated dictionary attack (requires OpenCL)
+  generate       Generative brute-force with charset + max length
+  verify         Verify JWT signature with a public key
+
+Options:
+  <token>              JWT token string (positional, or use --file)
+  --file <path>        Read token from file
+  --wordlist <path>    Path to wordlist file
+  --threads <N>        Number of CPU threads (0 = auto-detect)
+  --charset <chars>    Character set for generative bruteforce
+  --max-length <N>     Maximum secret length for generative bruteforce
+  --pubkey <path>      Public key PEM file (verify)
+  --json               Output results as JSON
+  --help               Show help
+  --version            Show version
+```
+
+### Examples
+
+**Decode a token:**
 ```bash
-./jwt_inspector
+jwt_inspector decode eyJhbGciOiJIUzI1NiIs...
 ```
 
-Example output:
-```
-📦 Loaded JWT token:
-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJzdGVwYW5rdXRhaiIsInJvbGUiOiJhZG1pbiIsImlhdCI6MTcxNTI5MDAwMH0.3KNkK-Z0n0RId2rKhICgh-JrNRFVvJphOnuopUlWjAg
-
-🔑 Token signature bytes: 32 bytes
-📊 Total secrets to test: 10000
-🖥️ OpenCL device: AMD Radeon Pro 5500M
-🚀 Starting OpenCL brute-force...
-⏱️ Time: 0.1234 sec
-⚡ Hashes/sec: 81037
-✅ Secret FOUND: "supersecret" at index 5123
+**Dictionary attack (CPU):**
+```bash
+jwt_inspector bruteforce --file token.txt --wordlist rockyou.txt --threads 8
 ```
 
-Additionally, based on the shared code, it appears there are other JWT decoding and bruteforce capabilities in the codebase that may be available through modifications to `main.cpp`. The `JWTDecoder` class includes:
-
-1. `decode()` - For decoding and inspecting tokens
-2. `bruteforce_secret()` - For CPU-based brute-force
-3. `bruteforce_secret_multithreaded()` - For multi-threaded CPU brute-force
-
-The `JWTBruteForcer` class provides GPU-accelerated brute-force capabilities.
-
-Example output:
-```
-🔑 Token signature bytes: 32 bytes
-📊 Total secrets to test: 10000
-🖥️ OpenCL device: AMD Radeon Pro 5500M
-🚀 Starting OpenCL brute-force...
-⏱️ Time: 0.1234 sec
-⚡ Hashes/sec: 81037
-✅ Secret FOUND: "supersecret" at index 5123
+**Dictionary attack (GPU):**
+```bash
+jwt_inspector gpu-bruteforce --file token.txt --wordlist rockyou.txt
 ```
 
-## Architecture
+**Generative bruteforce:**
+```bash
+jwt_inspector generate --file token.txt --charset "abcdefghijklmnopqrstuvwxyz0123456789" --max-length 6
+```
 
-The project is organized as follows:
+**Verify RS256 signature:**
+```bash
+jwt_inspector verify --file token.txt --pubkey public.pem
+```
 
-- `include/`: Header files
-  - `jwt_decoder.hpp`: CPU-based JWT operations
-  - `jwt_bruteforce.hpp`: OpenCL-accelerated brute-force
-- `src/`: Implementation files
-  - `main.cpp`: Command-line interface
-  - `jwt_decoder.cpp`: JWT decoding and CPU brute-force
-  - `jwt_bruteforce.cpp`: OpenCL setup and execution
-- `kernels/`: OpenCL kernel code
-  - `hmac_sha256.cl`: HMAC-SHA256 implementation for GPU
-- `data/`: Sample data
-  - `sample_token.txt`: Example JWT to test with
-  - `wordlist.txt`: Dictionary for brute-force attempts
-
-## How It Works
-
-JWT Inspector uses two key approaches for secret discovery:
-
-1. **CPU Multi-Threading**: Divides the wordlist into chunks and assigns them to separate threads for parallel processing.
-
-2. **GPU Acceleration**: Offloads the computation-intensive HMAC-SHA256 operations to the GPU using OpenCL, enabling thousands of attempts per second.
-
-The OpenCL kernel implements a streamlined version of HMAC-SHA256 specifically optimized for brute-force operations, with a focus on performance rather than completeness.
-
-## Performance
-
-Performance varies based on hardware, but typical results:
-
-- **CPU Multi-Threaded**: ~10,000-30,000 hashes/sec (depends on core count)
-- **GPU-Accelerated**: ~50,000-500,000 hashes/sec (depends on GPU model)
+**JSON output:**
+```bash
+jwt_inspector decode --json eyJhbGciOiJIUzI1NiIs...
+jwt_inspector bruteforce --json --file token.txt --wordlist words.txt
+```
 
 ## Security Note
 
-This tool is provided for educational and security research purposes only. Always use it responsibly and only on systems you own or have explicit permission to test.
+This tool is intended for educational and authorized security testing purposes only. Use responsibly and only on systems you own or have explicit permission to test.
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+MIT — see [LICENSE](LICENSE) for details.
