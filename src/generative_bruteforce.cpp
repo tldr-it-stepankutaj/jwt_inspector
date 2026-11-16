@@ -1,11 +1,13 @@
 #include "jwt_bruteforce.hpp"
 #include "jwt_utils.hpp"
+#include "hmac_alg.hpp"
 #include "progress.hpp"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
-#include <cstring>
 #include <iostream>
+#include <limits>
 #include <mutex>
 #include <thread>
 #include <vector>
@@ -16,20 +18,6 @@
 namespace jwt_inspector {
 
 namespace {
-
-const EVP_MD* evp_md_for_alg_gen(const std::string& alg) {
-    if (alg == "HS256") return EVP_sha256();
-    if (alg == "HS384") return EVP_sha384();
-    if (alg == "HS512") return EVP_sha512();
-    return nullptr;
-}
-
-size_t hash_size_for_alg_gen(const std::string& alg) {
-    if (alg == "HS256") return 32;
-    if (alg == "HS384") return 48;
-    if (alg == "HS512") return 64;
-    return 0;
-}
 
 /// Convert a linear index to a candidate string.
 /// index 0..base-1 → single chars, base..base+base^2-1 → two chars, etc.
@@ -55,11 +43,31 @@ std::string index_to_candidate(size_t index, const std::string& charset) {
 }
 
 /// Total number of candidates for lengths 1..max_length with given charset.
+/// Throws instead of silently wrapping around if the true count would not fit
+/// in a size_t — without this check, a large --charset/--max-length combination
+/// would overflow, produce a nonsensical (tiny) total, mislead the progress/ETA
+/// display, and cause worker threads to be handed a bogus, too-small index range
+/// (so most of the requested search space would silently never be tried).
 size_t total_candidates(size_t charset_size, size_t max_length) {
     size_t total = 0;
     size_t power = 1;
     for (size_t len = 1; len <= max_length; ++len) {
+        if (power > std::numeric_limits<size_t>::max() / charset_size) {
+            throw std::runtime_error(
+                "Generative bruteforce search space is too large to represent "
+                "(charset size " + std::to_string(charset_size) +
+                ", max-length " + std::to_string(max_length) +
+                "). Reduce --max-length or --charset.");
+        }
         power *= charset_size;
+
+        if (total > std::numeric_limits<size_t>::max() - power) {
+            throw std::runtime_error(
+                "Generative bruteforce search space is too large to represent "
+                "(charset size " + std::to_string(charset_size) +
+                ", max-length " + std::to_string(max_length) +
+                "). Reduce --max-length or --charset.");
+        }
         total += power;
     }
     return total;
@@ -68,7 +76,7 @@ size_t total_candidates(size_t charset_size, size_t max_length) {
 void print_gen_result(const BruteforceResult& r, bool json_output) {
     if (json_output) {
         std::cout << "{\"found\":" << (r.found ? "true" : "false");
-        if (r.found) std::cout << ",\"secret\":\"" << r.secret << "\"";
+        if (r.found) std::cout << R"(,"secret":")" << r.secret << "\"";
         std::cout << ",\"attempts\":" << r.attempts
                   << ",\"elapsed_sec\":" << r.elapsed_sec
                   << ",\"hashes_per_sec\":" << static_cast<size_t>(r.hashes_per_sec)
@@ -100,11 +108,11 @@ BruteforceResult generative_bruteforce(const std::string& token,
 
     auto parts = jwt_utils::split_token(token);
     std::string alg = jwt_utils::parse_header_alg(parts.header_b64);
-    const EVP_MD* md = evp_md_for_alg_gen(alg);
+    const EVP_MD* md = hmac_md_for_alg(alg);
     if (!md) {
         throw std::runtime_error("Unsupported HMAC algorithm: " + alg);
     }
-    size_t expected_hash_size = hash_size_for_alg_gen(alg);
+    size_t expected_hash_size = hmac_digest_size_for_alg(alg);
     auto expected_sig = jwt_utils::base64url_decode(parts.signature_b64);
     if (expected_sig.size() != expected_hash_size) {
         throw std::runtime_error("Signature size mismatch");
@@ -122,6 +130,9 @@ BruteforceResult generative_bruteforce(const std::string& token,
     if (num_threads == 0) {
         num_threads = std::thread::hardware_concurrency();
         if (num_threads == 0) num_threads = 4;
+    }
+    if (num_threads > total) {
+        num_threads = static_cast<unsigned int>(std::max<size_t>(total, 1));
     }
 
     std::atomic<int> found_flag{0};
@@ -145,6 +156,8 @@ BruteforceResult generative_bruteforce(const std::string& token,
                  reinterpret_cast<const unsigned char*>(msg.data()),
                  msg.size(), hmac_buf, &hmac_len);
 
+            progress.increment();
+
             if (hmac_len == expected_hash_size &&
                 std::memcmp(hmac_buf, expected_sig.data(), expected_hash_size) == 0) {
                 std::lock_guard<std::mutex> lock(found_mutex);
@@ -154,7 +167,6 @@ BruteforceResult generative_bruteforce(const std::string& token,
                 }
                 return;
             }
-            progress.increment();
         }
     };
 

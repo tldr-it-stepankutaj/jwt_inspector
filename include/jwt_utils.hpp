@@ -1,6 +1,5 @@
 #pragma once
 
-#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -34,5 +33,12 @@ nlohmann::json decode_json_part(const std::string& b64_part);
 
 /// Format a Unix timestamp as "YYYY-MM-DD HH:MM:SS UTC".
 std::string format_timestamp(long timestamp);
+
+/// Reads an entire file into a string, always in binary mode: callers use
+/// this for credential/key material (a PEM public key, a confusion-attack
+/// key file) where a text-mode CRLF<->LF translation on Windows must not
+/// silently change the bytes being read. Throws std::runtime_error if the
+/// file cannot be opened.
+std::string read_whole_file(const std::string& path);
 
 } // namespace jwt_utils

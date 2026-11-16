@@ -40,14 +40,14 @@ size_t ProgressReporter::attempts() const {
     return attempts_.load(std::memory_order_relaxed);
 }
 
-void ProgressReporter::report_loop() {
+void ProgressReporter::report_loop() const {
     while (running_) {
         print_status();
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
     }
 }
 
-void ProgressReporter::print_status() {
+void ProgressReporter::print_status() const {
     size_t current = attempts_.load(std::memory_order_relaxed);
     auto now = std::chrono::high_resolution_clock::now();
     double elapsed_sec = std::chrono::duration<double>(now - start_time_).count();

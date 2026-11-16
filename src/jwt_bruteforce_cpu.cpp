@@ -1,12 +1,12 @@
 #include "jwt_bruteforce.hpp"
 #include "jwt_utils.hpp"
+#include "hmac_alg.hpp"
 #include "progress.hpp"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
-#include <cstring>
 #include <iostream>
-#include <mutex>
 #include <thread>
 #include <vector>
 
@@ -17,24 +17,10 @@ namespace jwt_inspector {
 
 namespace {
 
-const EVP_MD* evp_md_for_alg(const std::string& alg) {
-    if (alg == "HS256") return EVP_sha256();
-    if (alg == "HS384") return EVP_sha384();
-    if (alg == "HS512") return EVP_sha512();
-    return nullptr;
-}
-
-size_t hash_size_for_alg(const std::string& alg) {
-    if (alg == "HS256") return 32;
-    if (alg == "HS384") return 48;
-    if (alg == "HS512") return 64;
-    return 0;
-}
-
 void print_result(const BruteforceResult& r, bool json_output) {
     if (json_output) {
         std::cout << "{\"found\":" << (r.found ? "true" : "false");
-        if (r.found) std::cout << ",\"secret\":\"" << r.secret << "\"";
+        if (r.found) std::cout << R"(,"secret":")" << r.secret << "\"";
         std::cout << ",\"attempts\":" << r.attempts
                   << ",\"elapsed_sec\":" << r.elapsed_sec
                   << ",\"hashes_per_sec\":" << static_cast<size_t>(r.hashes_per_sec)
@@ -61,11 +47,11 @@ BruteforceResult cpu_bruteforce(const std::string& token,
 
     auto parts = jwt_utils::split_token(token);
     std::string alg = jwt_utils::parse_header_alg(parts.header_b64);
-    const EVP_MD* md = evp_md_for_alg(alg);
+    const EVP_MD* md = hmac_md_for_alg(alg);
     if (!md) {
         throw std::runtime_error("Unsupported HMAC algorithm: " + alg);
     }
-    size_t expected_hash_size = hash_size_for_alg(alg);
+    size_t expected_hash_size = hmac_digest_size_for_alg(alg);
 
     // Decode expected signature to raw bytes for direct comparison
     auto expected_sig = jwt_utils::base64url_decode(parts.signature_b64);
@@ -80,6 +66,12 @@ BruteforceResult cpu_bruteforce(const std::string& token,
     if (num_threads == 0) {
         num_threads = std::thread::hardware_concurrency();
         if (num_threads == 0) num_threads = 4;
+    }
+    // Don't spawn more threads than there is work: harmless for correctness, but
+    // avoids wasting OS threads on a tiny wordlist when --threads was left at
+    // auto-detect on a many-core machine.
+    if (num_threads > wordlist.size()) {
+        num_threads = static_cast<unsigned int>(std::max<size_t>(wordlist.size(), 1));
     }
 
     std::atomic<int> found_idx{-1};
@@ -102,13 +94,14 @@ BruteforceResult cpu_bruteforce(const std::string& token,
                  reinterpret_cast<const unsigned char*>(msg.data()),
                  msg.size(), hmac_buf, &hmac_len);
 
+            progress.increment();
+
             if (hmac_len == expected_hash_size &&
                 std::memcmp(hmac_buf, expected_sig.data(), expected_hash_size) == 0) {
                 int expected = -1;
                 found_idx.compare_exchange_strong(expected, static_cast<int>(i));
                 return;
             }
-            progress.increment();
         }
     };
 

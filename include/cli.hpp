@@ -8,6 +8,7 @@ enum class Command {
     GpuBruteforce,
     Generate,
     Verify,
+    Forge,
     Help,
     Version
 };
@@ -29,6 +30,14 @@ struct CLIOptions {
 
     // Verify options
     std::optional<std::string> pubkey;      // --pubkey path
+
+    // Forge options
+    std::optional<std::string> forge_secret;           // --secret <value>
+    std::optional<std::string> forge_confusion_pubkey; // --confusion-pubkey <path>
+    bool forge_none = false;                           // --none
+    std::string forge_alg = "HS256";                   // --alg HS256|HS384|HS512
+    bool forge_alg_set = false;                        // true if --alg was given explicitly
+    std::optional<std::string> claims_file;             // --claims <path>
 
     // Output options
     bool json_output = false;               // --json

@@ -28,11 +28,11 @@ public:
     CLContext(const CLContext&) = delete;
     CLContext& operator=(const CLContext&) = delete;
 
-    cl_program build_program(const std::string& source) const;
-    std::string device_name() const;
-    cl_context context() const { return context_; }
-    cl_command_queue queue() const { return queue_; }
-    cl_device_id device() const { return device_; }
+    [[nodiscard]] cl_program build_program(const std::string& source) const;
+    [[nodiscard]] std::string device_name() const;
+    [[nodiscard]] cl_context context() const { return context_; }
+    [[nodiscard]] cl_command_queue queue() const { return queue_; }
+    [[nodiscard]] cl_device_id device() const { return device_; }
 };
 
 class CLBuffer {
@@ -46,7 +46,7 @@ public:
     CLBuffer& operator=(CLBuffer&& other) noexcept;
     CLBuffer(const CLBuffer&) = delete;
     CLBuffer& operator=(const CLBuffer&) = delete;
-    cl_mem get() const { return mem_; }
+    [[nodiscard]] cl_mem get() const { return mem_; }
     operator cl_mem() const { return mem_; }
 };
 
@@ -68,9 +68,9 @@ public:
             throw std::runtime_error("Failed to set kernel arg " + std::to_string(index));
     }
 
-    void set_arg(cl_uint index, const CLBuffer& buf);
+    void set_arg(cl_uint index, const CLBuffer& buf) const;
 
-    cl_kernel get() const { return kernel_; }
+    [[nodiscard]] cl_kernel get() const { return kernel_; }
 };
 
 class CLProgram {
@@ -83,7 +83,7 @@ public:
     CLProgram& operator=(CLProgram&& other) noexcept;
     CLProgram(const CLProgram&) = delete;
     CLProgram& operator=(const CLProgram&) = delete;
-    cl_program get() const { return program_; }
+    [[nodiscard]] cl_program get() const { return program_; }
 };
 
 #endif // HAS_OPENCL

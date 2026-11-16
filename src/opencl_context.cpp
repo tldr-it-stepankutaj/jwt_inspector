@@ -153,10 +153,9 @@ CLKernel& CLKernel::operator=(CLKernel&& other) noexcept {
     return *this;
 }
 
-void CLKernel::set_arg(cl_uint index, const CLBuffer& buf) {
+void CLKernel::set_arg(cl_uint index, const CLBuffer& buf) const {
     cl_mem m = buf.get();
-    cl_int err = clSetKernelArg(kernel_, index, sizeof(cl_mem), &m);
-    if (err != CL_SUCCESS)
+    if (cl_int err = clSetKernelArg(kernel_, index, sizeof(cl_mem), &m); err != CL_SUCCESS)
         throw std::runtime_error("Failed to set kernel arg " + std::to_string(index));
 }
 

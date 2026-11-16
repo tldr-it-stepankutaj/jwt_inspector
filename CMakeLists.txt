@@ -42,6 +42,7 @@ set(JWT_SOURCES
     src/jwt_bruteforce_cpu.cpp
     src/jwt_bruteforce_gpu.cpp
     src/jwt_verifier.cpp
+    src/jwt_forge.cpp
     src/generative_bruteforce.cpp
     src/progress.cpp
     src/opencl_context.cpp
@@ -88,6 +89,7 @@ if(BUILD_TESTS)
         src/jwt_bruteforce_cpu.cpp
         src/jwt_bruteforce_gpu.cpp
         src/jwt_verifier.cpp
+        src/jwt_forge.cpp
         src/generative_bruteforce.cpp
         src/progress.cpp
         src/opencl_context.cpp
@@ -111,10 +113,19 @@ if(BUILD_TESTS)
         tests/test_jwt_utils.cpp
         tests/test_jwt_decoder.cpp
         tests/test_bruteforce_cpu.cpp
+        tests/test_bruteforce_gpu.cpp
         tests/test_jwt_verifier.cpp
+        tests/test_forge.cpp
         tests/test_generative.cpp
+        tests/test_cli_smoke.cpp
     )
     target_link_libraries(jwt_tests PRIVATE jwt_lib GTest::gtest_main)
+    # test_cli_smoke.cpp exercises the real jwt_inspector binary (argv parsing +
+    # command dispatch), not just the jwt_lib functions it calls into — this is
+    # the one target_compile_definitions use in this project that points at
+    # another target's *output*, not a library feature flag.
+    target_compile_definitions(jwt_tests PRIVATE
+        JWT_INSPECTOR_BIN="$<TARGET_FILE:jwt_inspector>")
     include(GoogleTest)
     gtest_discover_tests(jwt_tests)
 endif()

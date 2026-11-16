@@ -29,6 +29,6 @@ private:
     std::thread reporter_thread_;
     std::chrono::high_resolution_clock::time_point start_time_;
 
-    void report_loop();
-    void print_status();
+    void report_loop() const;
+    void print_status() const;
 };

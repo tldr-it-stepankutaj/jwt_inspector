@@ -2,7 +2,6 @@
 #include "jwt_utils.hpp"
 
 #include <iostream>
-#include <cstring>
 
 #include <openssl/evp.h>
 #include <openssl/pem.h>
@@ -83,8 +82,8 @@ VerifyResult verify_token(const std::string& token, const std::string& pubkey_pe
     if (!md) {
         result.error = "Unsupported algorithm: " + alg;
         if (json_output) {
-            std::cout << "{\"valid\":false,\"algorithm\":\"" << alg
-                      << "\",\"error\":\"" << result.error << "\"}\n";
+            std::cout << R"({"valid":false,"algorithm":")" << alg
+                      << R"(","error":")" << result.error << "\"}\n";
         } else {
             std::cerr << "Error: " << result.error << "\n";
         }
@@ -102,8 +101,8 @@ VerifyResult verify_token(const std::string& token, const std::string& pubkey_pe
     if (!pkey) {
         result.error = "Failed to parse public key: " + openssl_error_string();
         if (json_output) {
-            std::cout << "{\"valid\":false,\"algorithm\":\"" << alg
-                      << "\",\"error\":\"" << result.error << "\"}\n";
+            std::cout << R"({"valid":false,"algorithm":")" << alg
+                      << R"(","error":")" << result.error << "\"}\n";
         } else {
             std::cerr << "Error: " << result.error << "\n";
         }
@@ -115,8 +114,7 @@ VerifyResult verify_token(const std::string& token, const std::string& pubkey_pe
 
     // For EC algorithms, convert raw R||S to DER
     std::vector<uint8_t> sig_to_verify;
-    bool is_ec = (alg.substr(0, 2) == "ES");
-    if (is_ec) {
+    if ((alg.substr(0, 2) == "ES")) {
         sig_to_verify = raw_ecdsa_to_der(raw_sig);
         if (sig_to_verify.empty()) {
             EVP_PKEY_free(pkey);
@@ -161,7 +159,7 @@ VerifyResult verify_token(const std::string& token, const std::string& pubkey_pe
 
     if (json_output) {
         std::cout << "{\"valid\":" << (result.valid ? "true" : "false")
-                  << ",\"algorithm\":\"" << alg << "\"}\n";
+                  << R"(,"algorithm":")" << alg << "\"}\n";
     } else {
         if (result.valid) {
             std::cout << "Signature VALID (" << alg << ")\n";

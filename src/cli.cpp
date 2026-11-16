@@ -1,8 +1,5 @@
 #include "cli.hpp"
 
-#include <algorithm>
-#include <cctype>
-#include <cstdlib>
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -45,12 +42,17 @@ static Command parse_command(const std::string& arg) {
     if (arg == "gpu-bruteforce") return Command::GpuBruteforce;
     if (arg == "generate")       return Command::Generate;
     if (arg == "verify")         return Command::Verify;
+    if (arg == "forge")          return Command::Forge;
     if (arg == "help" || arg == "--help" || arg == "-h")
         return Command::Help;
     if (arg == "version" || arg == "--version" || arg == "-v")
         return Command::Version;
 
     throw std::runtime_error("Unknown command: " + arg);
+}
+
+static bool is_valid_hmac_alg_name(const std::string& alg) {
+    return alg == "HS256" || alg == "HS384" || alg == "HS512";
 }
 
 static void require_next_arg(int i, int argc, const std::string& flag) {
@@ -72,6 +74,7 @@ Commands:
   gpu-bruteforce GPU-accelerated dictionary attack (requires OpenCL)
   generate      Generative brute-force with charset + max length
   verify        Verify JWT signature with a public key (RS256/ES256)
+  forge         Forge/re-sign a JWT (secret, alg:none, or RS/ES->HS "confusion")
 
 Options:
   <token>              JWT token string (positional, or use --file)
@@ -84,6 +87,22 @@ Options:
   --json               Output results as JSON
   --help               Show this help
   --version            Show version
+
+Forge options (exactly one of --secret / --confusion-pubkey / --none):
+  --secret <value>         Sign with this literal HMAC secret
+  --confusion-pubkey <path> Sign using an RS/ES public key's raw bytes as the
+                            HMAC secret (RS256/ES256 -> HS256 "alg confusion")
+  --none                   Produce an unsigned "alg":"none" token
+  --alg <HS256|HS384|HS512> HMAC algorithm for --secret/--confusion-pubkey
+                            (default: HS256)
+  --claims <path>           JSON file whose top-level keys override the
+                            payload (base token's payload, or {} if none)
+
+Exit codes:
+  0  success (secret found / signature valid / decode or forge succeeded)
+  1  error (bad arguments, file not found, malformed token, ...)
+  2  bruteforce/gpu-bruteforce/generate ran to completion but found nothing
+  3  verify ran to completion but the signature is not valid
 )";
 }
 
@@ -92,7 +111,7 @@ void print_version() {
 }
 
 CLIOptions parse_args(int argc, char* argv[]) {
-    CLIOptions opts;
+    CLIOptions opts = {};
 
     if (argc < 2)
         return opts; // defaults to Help
@@ -157,6 +176,31 @@ CLIOptions parse_args(int argc, char* argv[]) {
         } else if (arg == "--pubkey") {
             require_next_arg(i, argc, arg);
             opts.pubkey = argv[++i];
+
+        } else if (arg == "--secret") {
+            require_next_arg(i, argc, arg);
+            opts.forge_secret = argv[++i];
+
+        } else if (arg == "--confusion-pubkey") {
+            require_next_arg(i, argc, arg);
+            opts.forge_confusion_pubkey = argv[++i];
+
+        } else if (arg == "--none") {
+            opts.forge_none = true;
+
+        } else if (arg == "--alg") {
+            require_next_arg(i, argc, arg);
+            ++i;
+            if (!is_valid_hmac_alg_name(argv[i])) {
+                throw std::runtime_error(
+                    "--alg must be one of HS256, HS384, HS512, got: " + std::string(argv[i]));
+            }
+            opts.forge_alg = argv[i];
+            opts.forge_alg_set = true;
+
+        } else if (arg == "--claims") {
+            require_next_arg(i, argc, arg);
+            opts.claims_file = argv[++i];
 
         } else if (arg == "--json") {
             opts.json_output = true;

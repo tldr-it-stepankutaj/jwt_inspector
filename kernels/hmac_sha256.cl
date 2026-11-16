@@ -117,7 +117,37 @@ void hash_to_bytes(__private const uint *hash, __private uchar *out) {
 
 // MAX_MSG_LEN: maximum header.payload length supported.
 // Total inner input = 64 (ipad) + header_len, must fit in inner_data array.
+// Host side (jwt_bruteforce_gpu.cpp) validates header_len against this before
+// launching the kernel, so there is no silent truncation here.
 #define MAX_MSG_LEN 512
+
+// MAX_SECRET_LEN: maximum candidate-secret length supported (bytes). Host side
+// validates every wordlist entry against this before launching the kernel.
+#define MAX_SECRET_LEN 256
+
+// HMAC's key-derivation step: per RFC 2104, a key longer than the hash block
+// size (64 bytes for SHA-256) must first be hashed down to the digest size and
+// then zero-padded back up to the block size, *before* XORing with ipad/opad.
+// Without this, a candidate secret longer than 64 bytes would be silently
+// truncated at 64 bytes instead, producing the wrong HMAC and making the real
+// secret unfindable even though it is present in the wordlist.
+void hmac_key_block(__global const uchar *secret, int key_len,
+                     __private uchar *key_block /* 64 bytes, out */) {
+    for (int i = 0; i < 64; ++i) key_block[i] = 0;
+
+    if (key_len <= 64) {
+        for (int i = 0; i < key_len; ++i) key_block[i] = secret[i];
+        return;
+    }
+
+    uchar key_copy[MAX_SECRET_LEN];
+    int copy_len = key_len < MAX_SECRET_LEN ? key_len : MAX_SECRET_LEN;
+    for (int i = 0; i < copy_len; ++i) key_copy[i] = secret[i];
+
+    uint hashed[8];
+    sha256(key_copy, copy_len, hashed);
+    hash_to_bytes(hashed, key_block); // writes 32 bytes; the rest stay zero
+}
 
 __kernel void hmac_sha256_bruteforce(
     __global const uchar *header_payload,
@@ -137,20 +167,18 @@ __kernel void hmac_sha256_bruteforce(
     int key_len = secret_lengths[gid];
 
     // HMAC-SHA256:
-    //   inner = SHA256( (key XOR ipad) || message )
-    //   outer = SHA256( (key XOR opad) || inner_hash )
+    //   K'    = key_len <= 64 ? key (zero-padded to 64) : SHA256(key) (zero-padded to 64)
+    //   inner = SHA256( (K' XOR ipad) || message )
+    //   outer = SHA256( (K' XOR opad) || inner_hash )
     // ipad/opad are always 64 bytes.
+    uchar key_block[64];
+    hmac_key_block(secret, key_len, key_block);
 
-    // Build ipad and opad (64 bytes each)
     uchar i_key_pad[64];
     uchar o_key_pad[64];
     for (int i = 0; i < 64; ++i) {
-        i_key_pad[i] = 0x36;
-        o_key_pad[i] = 0x5c;
-    }
-    for (int i = 0; i < key_len && i < 64; ++i) {
-        i_key_pad[i] ^= secret[i];
-        o_key_pad[i] ^= secret[i];
+        i_key_pad[i] = key_block[i] ^ 0x36;
+        o_key_pad[i] = key_block[i] ^ 0x5c;
     }
 
     // Inner: SHA256(i_key_pad[64] || header_payload[header_len])

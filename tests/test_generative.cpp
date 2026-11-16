@@ -34,3 +34,15 @@ TEST(GenerativeBruteforce, ZeroMaxLengthThrows) {
         std::runtime_error
     );
 }
+
+// Regression test: charset_size^max_length (62^40) vastly exceeds the range of
+// size_t and used to silently wrap around, producing a bogus small "total"
+// that misled the progress/ETA display and caused most of the requested search
+// space to never actually be tried. It must now fail loudly instead.
+TEST(GenerativeBruteforce, SearchSpaceOverflowThrows) {
+    std::string charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    EXPECT_THROW(
+        jwt_inspector::generative_bruteforce(TEST_TOKEN, charset, 40, 1, true),
+        std::runtime_error
+    );
+}
