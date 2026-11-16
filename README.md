@@ -2,8 +2,10 @@
 
 A high-performance JWT (JSON Web Token) analysis, brute-force, and forging tool with GPU-accelerated secret key discovery via OpenCL. Built for authorized security testing: cracking a weak HMAC secret, then actually forging a usable token with it — or testing whether a target blindly trusts `alg: none` or confuses an RS/ES public key for an HMAC secret.
 
-![JWT Inspector](https://img.shields.io/badge/JWT-Inspector-blue)
-![License](https://img.shields.io/badge/license-MIT-green)
+[![Release](https://github.com/tldr-it-stepankutaj/jwt_inspector/actions/workflows/release.yml/badge.svg)](https://github.com/tldr-it-stepankutaj/jwt_inspector/actions/workflows/release.yml)
+[![Latest release](https://img.shields.io/github/v/release/tldr-it-stepankutaj/jwt_inspector)](https://github.com/tldr-it-stepankutaj/jwt_inspector/releases/latest)
+[![License](https://img.shields.io/github/license/tldr-it-stepankutaj/jwt_inspector)](LICENSE)
+![C++17](https://img.shields.io/badge/C%2B%2B-17-blue)
 
 See [CHANGELOG.md](CHANGELOG.md) for release history.
 
