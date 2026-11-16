@@ -1,12 +1,25 @@
 #include "jwt_decoder.hpp"
 #include "jwt_utils.hpp"
 
+#include <algorithm>
+#include <cctype>
 #include <iostream>
 #include <sstream>
 
 namespace jwt_inspector {
 
 namespace {
+
+/// Case-insensitive check for the "none" algorithm. Classic alg:none bypasses
+/// against naive, case-sensitive checks have used "None"/"NONE"/"nOnE", so a
+/// decoder meant to flag this for a pentester should not miss those either.
+bool is_alg_none(const std::string& alg) {
+    if (alg.size() != 4) return false;
+    std::string lower = alg;
+    std::transform(lower.begin(), lower.end(), lower.begin(),
+                   [](unsigned char c) { return std::tolower(c); });
+    return lower == "none";
+}
 
 void print_json_value(const nlohmann::json& val, const std::string& key) {
     if (val.is_number_integer()) {
@@ -28,13 +41,28 @@ void decode_token(const std::string& token, bool json_output) {
     auto header = jwt_utils::decode_json_part(parts.header_b64);
     auto payload = jwt_utils::decode_json_part(parts.payload_b64);
 
+    bool alg_none = header.contains("alg") && header["alg"].is_string() &&
+                    is_alg_none(header["alg"].get<std::string>());
+
     if (json_output) {
         nlohmann::json out;
         out["header"] = header;
         out["payload"] = payload;
         out["signature"] = parts.signature_b64;
+        if (alg_none) {
+            out["alg_none_warning"] =
+                "This token claims \"alg\":\"none\" (unsigned). A verifier that trusts the "
+                "algorithm named in the token header, instead of pinning the algorithm it "
+                "expects, may accept this without checking any signature at all.";
+        }
         std::cout << out.dump(2) << "\n";
         return;
+    }
+
+    if (alg_none) {
+        std::cerr << "WARNING: this token's header claims \"alg\":\"none\" (unsigned). A "
+                     "verifier that trusts the token's own \"alg\" instead of pinning the "
+                     "algorithm it expects may accept this without checking any signature.\n\n";
     }
 
     std::cout << "Header:\n";

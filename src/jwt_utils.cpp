@@ -1,8 +1,7 @@
 #include "jwt_utils.hpp"
 
 #include <algorithm>
-#include <chrono>
-#include <ctime>
+#include <fstream>
 #include <iomanip>
 #include <memory>
 #include <sstream>
@@ -152,7 +151,7 @@ std::string parse_header_alg(const std::string& header_b64) {
 }
 
 std::string format_timestamp(long timestamp) {
-    std::time_t t = static_cast<std::time_t>(timestamp);
+    auto t = static_cast<std::time_t>(timestamp);
     std::tm utc{};
 #if defined(_WIN32)
     gmtime_s(&utc, &t);
@@ -162,6 +161,14 @@ std::string format_timestamp(long timestamp) {
     std::ostringstream oss;
     oss << std::put_time(&utc, "%Y-%m-%d %H:%M:%S") << " UTC";
     return oss.str();
+}
+
+std::string read_whole_file(const std::string& path) {
+    std::ifstream file(path, std::ios::binary);
+    if (!file) {
+        throw std::runtime_error("Cannot open file: " + path);
+    }
+    return {std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
 }
 
 } // namespace jwt_utils

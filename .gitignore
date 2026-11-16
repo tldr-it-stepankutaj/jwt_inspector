@@ -33,3 +33,10 @@
 
 .idea/
 build/
+cmake-build-*/
+
+# The compiled jwt_inspector binary has accidentally ended up committed at the
+# repo root before (built in-source instead of into build/); make sure that
+# can't happen again.
+/jwt_inspector
+/jwt_inspector.exe

@@ -5,7 +5,6 @@
 #include <iostream>
 #include <fstream>
 #include <chrono>
-#include <cstring>
 #include <algorithm>
 #include <stdexcept>
 
@@ -20,7 +19,7 @@ namespace {
 void print_gpu_result(const BruteforceResult& r, bool json_output) {
     if (json_output) {
         std::cout << "{\"found\":" << (r.found ? "true" : "false");
-        if (r.found) std::cout << ",\"secret\":\"" << r.secret << "\"";
+        if (r.found) std::cout << R"(,"secret":")" << r.secret << "\"";
         std::cout << ",\"attempts\":" << r.attempts
                   << ",\"elapsed_sec\":" << r.elapsed_sec
                   << ",\"hashes_per_sec\":" << static_cast<size_t>(r.hashes_per_sec)
@@ -55,6 +54,18 @@ std::string find_kernel_file() {
 
 #ifdef HAS_OPENCL
 
+namespace {
+
+// These two limits are fixed-size buffers inside kernels/hmac_sha256.cl and MUST
+// match the kernel's MAX_MSG_LEN / MAX_SECRET_LEN constants. They exist so the host
+// can validate input up front and fail with a clear error instead of letting the
+// kernel silently read out of bounds / truncate, which would produce a wrong hash
+// and a false "secret not found" for an otherwise-correct candidate.
+constexpr int kGpuMaxHeaderPayloadLen = 512;
+constexpr size_t kGpuMaxSecretLen = 256;
+
+} // anonymous namespace
+
 BruteforceResult gpu_bruteforce(const std::string& token,
                                 const std::vector<std::string>& wordlist,
                                 bool json_output) {
@@ -76,17 +87,32 @@ BruteforceResult gpu_bruteforce(const std::string& token,
     const int header_len = static_cast<int>(msg.size());
     const int total = static_cast<int>(wordlist.size());
 
-    // Compute max secret length from wordlist
+    if (header_len > kGpuMaxHeaderPayloadLen) {
+        throw std::runtime_error(
+            "Token header+payload is " + std::to_string(header_len) +
+            " bytes, which exceeds the GPU kernel's fixed buffer of " +
+            std::to_string(kGpuMaxHeaderPayloadLen) +
+            " bytes. Use 'bruteforce' (CPU) for this token instead.");
+    }
+
+    // Compute max secret length from wordlist. Any candidate longer than
+    // kGpuMaxSecretLen is rejected up front rather than silently truncated: a
+    // truncated key hashes to something else entirely, so the real secret could
+    // never be found via GPU even though it is present in the wordlist.
     size_t max_secret_len = 0;
     for (auto& w : wordlist) {
+        if (w.size() > kGpuMaxSecretLen) {
+            throw std::runtime_error(
+                "Wordlist contains a " + std::to_string(w.size()) +
+                "-byte candidate, which exceeds the GPU kernel's limit of " +
+                std::to_string(kGpuMaxSecretLen) +
+                " bytes. Use 'bruteforce' (CPU) for wordlists with very long candidates.");
+        }
         max_secret_len = std::max(max_secret_len, w.size());
     }
     if (max_secret_len == 0) {
         throw std::runtime_error("Wordlist is empty");
     }
-    // Clamp to 64 (HMAC key block size — longer keys get hashed first,
-    // but for simplicity we cap at 64 for the kernel)
-    if (max_secret_len > 64) max_secret_len = 64;
     const int max_slen = static_cast<int>(max_secret_len);
 
     // Initialize OpenCL
@@ -156,7 +182,7 @@ BruteforceResult gpu_bruteforce(const std::string& token,
         kernel.set_arg(6, buf_sig);
         kernel.set_arg(7, buf_found);
 
-        size_t global_size = static_cast<size_t>(batch_count);
+        auto global_size = static_cast<size_t>(batch_count);
         cl_int err = clEnqueueNDRangeKernel(ctx.queue(), kernel.get(), 1, nullptr,
                                              &global_size, nullptr, 0, nullptr, nullptr);
         if (err != CL_SUCCESS) {
